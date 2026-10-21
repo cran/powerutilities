@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>Specifying Contrasts in R</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+
+
+
+
+<style type="text/css">body {font-size: 11pt; font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;margin: 30px 50px 30px 50px; }h1,h2,h3,h4,h5,h6 { font-family: Arial,Helvetica,Sans-serif; }a { text-decoration: none; }a:link { color:darkblue; } a:visited { color:darkblue; } a:hover { color:dodgerblue; }a:active { color:dodgerblue; } code {color: #602000;font-family: "Lucida Console", Monaco, monospace; font-size: 90%;}.r { color: darkred; }.ro { color: darkgreen; background-color: #eeeeee; }.re { color: red;}.r code, a code, .ro code, .re code { color: inherit; }.vigindex ul { list-style-type: none; }.vigindex ul li { list-style: none; }.vigindex a code { color: inherit; }.vigindex li code { color: inherit; }</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Specifying Contrasts in R</h1>
+
+
+<div id="TOC">
+<ul>
+<li><a href="#introduction" id="toc-introduction">Introduction</a></li>
+<li><a href="#estimated-marginal-means" id="toc-estimated-marginal-means">Estimated Marginal Means</a></li>
+<li><a href="#contrast-analysis-in-r" id="toc-contrast-analysis-in-r">Contrast Analysis in R</a>
+<ul>
+<li><a href="#class-comparisons-using-custom-contrasts" id="toc-class-comparisons-using-custom-contrasts">Class Comparisons
+Using Custom Contrasts</a></li>
+<li><a href="#orthogonality" id="toc-orthogonality">Orthogonality</a></li>
+<li><a href="#interaction-contrasts" id="toc-interaction-contrasts">Interaction Contrasts</a></li>
+</ul></li>
+<li><a href="#polynomial-contrasts" id="toc-polynomial-contrasts">Polynomial Contrasts</a></li>
+<li><a href="#references" id="toc-references">References</a></li>
+</ul>
+</div>
+
+<div id="introduction" class="section level1">
+<h1>Introduction</h1>
+<p>The primary purpose of this vignette is to introduce contrasts to
+those who may not be familiar with them and to provide guidance on how
+to specify and use contrasts in R, specifically in the context of the
+<code>emmeans</code> package. Before we can get to contrasts, however,
+it is necessary to introduce estimated marginal means and to address a
+very frequently raised question about why/when they are preferable to
+simple arithemetic means.</p>
+</div>
+<div id="estimated-marginal-means" class="section level1">
+<h1>Estimated Marginal Means</h1>
+<p>I am frequently asked some version of the question: <strong>why
+should I report estimated marginal means instead of simple arithmetic
+means?</strong> I believe the following thought experiment provides the
+quickest, simplest, and most compelling answer.</p>
+<p>Consider a hypothetical factorial experiment with two treatments, A
+and B, each of which is either absent (= 0) or present (= 1). Suppose
+the experiment has a completely randomized design with four replicates.
+A table of the resulting data might be arranged like this:</p>
+<p><span class="math display">\[\begin{matrix}
+~~~~~~A_0 &amp; A_1 \\
+B_0 \begin{bmatrix} X &amp; X \\ X &amp; X\end{bmatrix} &amp;
+\begin{bmatrix} X &amp; X \\ X &amp; X\end{bmatrix} \\
+B_1 \begin{bmatrix} X &amp; X \\ X &amp; X\end{bmatrix} &amp;
+\begin{bmatrix} X &amp; X \\ X &amp; X\end{bmatrix}
+\end{matrix}\]</span></p>
+<p>Let’s further imagine that the effect of A is to increase yield by 5,
+the effect of B is to increase yield by 10, and there is no interaction
+(i.e., the effect of adding both is just the sum of the two individual
+effects, or 15). For the sake of illustration, let us further assume
+there is zero sampling variation, meaning that every observation
+collected during the experiment will be exactly equal to the mean for
+that treatment combination. Note that none of the results which follow
+require this in any way, but removing the background noise will make the
+patterns much easier to see. under those circumstances, the results of
+our experiment will look like this:</p>
+<p><span class="math display">\[\begin{matrix}
+~~~~~~A_0 &amp; A_1 \\
+B_0 \begin{bmatrix} 10 &amp; 10 \\ 10 &amp; 10\end{bmatrix} &amp;
+\begin{bmatrix} 15 &amp; 15 \\ 15 &amp; 15\end{bmatrix} \\
+B_1 \begin{bmatrix} 20 &amp; 20 \\ 20 &amp; 20\end{bmatrix} &amp;
+\begin{bmatrix} 25 &amp; 25 \\ 25 &amp; 25\end{bmatrix}
+\end{matrix}\]</span></p>
+<p>Now let us imagine that, due to the nature of our research, we are
+primarily interested in the overall effect of A. Given that we did not
+observe an interaction, we then might wish to report the average mean of
+A[0] and of mean of A[1] (averaging over the 2 levels of B). There are 2
+ways we could do this, either averaging all the values in each of the A
+columns together to get the simple arithmetic mean:</p>
+<p><span class="math display">\[\begin{matrix}
+A_0 ~~~~~~&amp; A_1 \\
+\sum\begin{bmatrix} 10 &amp; 10 \\ 10 &amp; 10 \\ 20 &amp; 20 \\ 20
+&amp; 20 \end{bmatrix}\div8 ~~~~~~&amp; \sum\begin{bmatrix} 15 &amp; 15
+\\ 15 &amp; 15 \\ 25 &amp; 25 \\ 25 &amp; 25\end{bmatrix}\div 8\\
+= ~~~~&amp; = \\ \color{green}{\textbf{15}} ~~~~~&amp;
+\color{green}{\textbf{20}}
+\end{matrix}\]</span></p>
+<p>Or we could first take the average of each cell and then average
+those averages. Let’s call this the <em>estimated marginal
+means</em>:</p>
+<p><span class="math display">\[\begin{matrix}
+~~~~~~A_0 ~~~~~&amp; &amp; A_1 &amp; \\
+\sum \begin{bmatrix} 10 &amp; 10 \\ 10 &amp; 10\end{bmatrix}\div4 &amp;
+= 10 ~~~~~&amp; \sum \begin{bmatrix} 15 &amp; 15 \\ 15 &amp;
+15\end{bmatrix}\div4 &amp; = 15 \\
+\sum \begin{bmatrix} 20 &amp; 20 \\ 20 &amp; 20\end{bmatrix}\div4 &amp;
+= 20 ~~~~~&amp; \sum\begin{bmatrix} 25 &amp; 25 \\ 25 &amp;
+25\end{bmatrix}\div4 &amp; = 25 \\
+&amp; \frac{10 + 20}{2} ~~~~~&amp; &amp; \frac{15 + 25}{2}\\
+&amp; = ~~~~ &amp; &amp; = \\
+&amp; \color{green}{\textbf{15}} ~~~~~~&amp; &amp;
+\color{green}{\textbf{20}} \\
+\end{matrix}\]</span></p>
+<p>In this example, these two approaches produce identical results, and
+so it doesn’t matter which approach we use. But now let’s imagine that
+one sample was lost (completely at random) during data collection. Our
+data now looks like this:</p>
+<p><span class="math display">\[\begin{matrix}
+~~~~~~A_0 &amp; A_2 \\
+B_0 \begin{bmatrix} 10 &amp; 10 \\ 10 &amp; 10\end{bmatrix} &amp;
+\begin{bmatrix} 15 &amp; 15 \\ 15 &amp; 15\end{bmatrix} \\
+B_1 \begin{bmatrix} 20 &amp; 20 \\ 20 &amp; 20\end{bmatrix} &amp;
+\begin{bmatrix} 25 &amp; 25 \\ 25 &amp; \end{bmatrix}
+\end{matrix}\]</span></p>
+<p>If we use the estimated marginal means, our results do not change. In
+other words, <em>our results are not affected by a lack of
+balance</em>:</p>
+<p><span class="math display">\[\begin{matrix}
+A_0 ~~~~~&amp; &amp; A_1 &amp; \\
+\sum \begin{bmatrix} 10 &amp; 10 \\ 10 &amp; 10\end{bmatrix}\div4 &amp;
+= 10 ~~~~~ &amp; \sum \begin{bmatrix} 15 &amp; 15 \\ 15 &amp;
+15\end{bmatrix}\div4 &amp; = 15 \\
+\sum \begin{bmatrix} 20 &amp; 20 \\ 20 &amp; 20\end{bmatrix}\div4 &amp;
+= 20 ~~~~~&amp; \sum\begin{bmatrix} 25 &amp; 25 \\ 25 &amp;
+\end{bmatrix}\div3 &amp; = 25 \\
+&amp; \frac{10 + 20}{2} ~~~~~&amp; &amp; \frac{15 + 25}{2}\\
+&amp; = ~~~~&amp; &amp; = \\
+&amp; \color{green}{\textbf{15}} ~~~~~&amp; &amp;
+\color{green}{\textbf{20}} \\
+\end{matrix}\]</span></p>
+<p>But that is <em>not</em> the case for the simple arithmetic means.
+Here, the loss of an observation from the higher yielding A[1]B[1]
+treatment means that the average for A[1] is biased downward, and our
+results are thus sensitive to unequal replication among our
+treatments.</p>
+<p><span class="math display">\[\begin{matrix}
+A_0 ~~~~~&amp; A_1 \\
+\sum\begin{bmatrix} 10 &amp; 10 \\ 10 &amp; 10 \\ 20 &amp; 20 \\ 20
+&amp; 20 \end{bmatrix}\div8 ~~~~~&amp; \sum\begin{bmatrix} 15 &amp; 15
+\\ 15 &amp; 15 \\ 25 &amp; 25 \\ 25 &amp; \end{bmatrix}\div 7\\
+= ~~~~&amp; = \\ \color{green}{\textbf{15}} ~~~~~&amp;
+\color{red}{\textbf{19.28571}}
+\end{matrix}\]</span></p>
+<p><strong>The estimated marginal means consistently provide the
+estimates one would expect if the experiment was balanced, whether it
+was or not</strong>. While it is true that there are some special
+occasions - especially for some types of observational studies - where
+this may not be what you as a researcher are interested in reporting,
+but for the overwhelming marjority of designed experiments, it is what
+we are interested in reporting. And since the marginal means (EMMs)
+“work” whether the experiment is balanced or not, it is safer to default
+to reporting EMMs.</p>
+</div>
+<div id="contrast-analysis-in-r" class="section level1">
+<h1>Contrast Analysis in R</h1>
+<p>These data sets and examples are taken from Saville &amp; Wood
+(1991). Section III of that book is among the single best works
+available on the subject of contrasts. The geometric methods they employ
+for analysing data and performing the contrast analysis will be
+unfamiliar, to say the least, to most readers but those who can look
+past that fact will be greatly rewarded.</p>
+<div id="class-comparisons-using-custom-contrasts" class="section level2">
+<h2>Class Comparisons Using Custom Contrasts</h2>
+<p>First, we get our R environment ready:</p>
+<pre class="r"><code># Load packages
+library(dplyr)
+library(tidyr)
+library(emmeans)
+library(powerutilities)</code></pre>
+<p>The following data are the results of an experiment - arranged as a
+completely randomized design - which compared yields of eight different
+cultivars of beet (<em>Beta vulgaris</em> L.).</p>
+<pre class="r"><code>data(&quot;greenfeeds&quot;)
+
+greenfeeds |&gt; 
+  pivot_wider(names_from = &#39;Rep&#39;, 
+              values_from = &#39;Yield&#39;, 
+              names_prefix = &#39;Rep:&#39;)</code></pre>
+<pre><code>#&gt; # A tibble: 8 × 5
+#&gt;   Treatment                `Rep:1` `Rep:2` `Rep:3` `Rep:4`
+#&gt;   &lt;fct&gt;                      &lt;dbl&gt;   &lt;dbl&gt;   &lt;dbl&gt;   &lt;dbl&gt;
+#&gt; 1 Brigadier Mangels           11.7    11.3    11.5    10.6
+#&gt; 2 Yellow Globe Mangels        12.6    13.5    14.8    14.9
+#&gt; 3 Orange Globe Mangels        12.5    13.1    11.2     9.8
+#&gt; 4 Red Intermediate Mangels    11      11.8    13.4     8.1
+#&gt; 5 Mono Rosa Fodder Beet       13.9    13      15.2    17.1
+#&gt; 6 Mono Blanc Fodder Beet      14.1    12.6    15.6    11.3
+#&gt; 7 Mono Bomba Fodder Beet      11.9    15.2    13.9    14.7
+#&gt; 8 Yellow Daeno Fodder Beet    15.5    16.8    22.3    14.4</code></pre>
+<p>The eight cultivars included in the study include four “Mangel” type
+cultivars and four “Fodder Beet” type cultivars. This naturally suggests
+the research question:</p>
+<p><strong>Q1: Does the yield of the “mangel types” differ, on average,
+from the yield of the “fodder types”?</strong></p>
+<p>Let the following symbols stand in for the mean yield of each
+cultivar:</p>
+<table>
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Treatment</th>
+<th>Mean</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Brigadier Mangels</td>
+<td><span class="math display">\[                                                                                                                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                                                                                                                            \mu_1                          
+                                                                                                                                                                                                                                                                                                                                                                            \]</span></td>
+</tr>
+<tr class="even">
+<td>Yellow Globe Mangels</td>
+<td><span class="math display">\[                                                                                                                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                                                                                                                            \mu_2                          
+                                                                                                                                                                                                                                                                                                                                                                            \]</span></td>
+</tr>
+<tr class="odd">
+<td>Orange Globe Mangels</td>
+<td><span class="math display">\[                                                                                                                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                                                                                                                            \mu_3                          
+                                                                                                                                                                                                                                                                                                                                                                            \]</span></td>
+</tr>
+<tr class="even">
+<td>Red Intermediate Mangels</td>
+<td><span class="math display">\[                                                                                                                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                                                                                                                            \mu_4                          
+                                                                                                                                                                                                                                                                                                                                                                            \]</span></td>
+</tr>
+<tr class="odd">
+<td>Mono Rosa Fodder Beet</td>
+<td><span class="math display">\[                                                                                                                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                                                                                                                            \mu_5                          
+                                                                                                                                                                                                                                                                                                                                                                            \]</span></td>
+</tr>
+<tr class="even">
+<td>Mono Blanc Fodder Beet</td>
+<td><span class="math display">\[                                                                                                                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                                                                                                                            \mu_6                          
+                                                                                                                                                                                                                                                                                                                                                                            \]</span></td>
+</tr>
+<tr class="odd">
+<td>Mono Bomba Fodder Beet</td>
+<td><span class="math display">\[                                                                                                                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                                                                                                                            \mu_7                          
+                                                                                                                                                                                                                                                                                                                                                                            \]</span></td>
+</tr>
+<tr class="even">
+<td>Yellow Daeno Fodder Beet</td>
+<td><span class="math display">\[                                                                                                                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                                                                                                                            \mu_8                          
+                                                                                                                                                                                                                                                                                                                                                                            \]</span></td>
+</tr>
+</tbody>
+</table>
+<p>We can now express our research question as a testable, statistical
+hypothesis:</p>
+<p><span class="math display">\[
+H_1: \frac{\mu_1 + \mu_2 + \mu_3 + \mu_4}{4} = \frac{\mu_5 + \mu_6 +
+\mu_7 + \mu_8}{4}
+\]</span></p>
+<p>Which we can re-express algebraically as follows:</p>
+<p><span class="math display">\[
+H_1: \frac{\mu_1 + \mu_2 + \mu_3 + \mu_4}{4} - \frac{\mu_5 + \mu_6 +
+\mu_7 + \mu_8}{4} = 0
+\]</span></p>
+<p>And further, as:</p>
+<p><span class="math display">\[
+H_1: \frac{1}{4}\mu_1 +\frac{1}{4}\mu_2 + \frac{1}{4}\mu_3 +
+\frac{1}{4}\mu_4 - \frac{1}{4}\mu_5 - \frac{1}{4}\mu_6 -
+\frac{1}{4}\mu_7 - \frac{1}{4}\mu_8= 0
+\]</span></p>
+<p>What this re-expression has given us is a set of coefficients or
+weights (i.e. 0.25, 0.25, 0.25, 0.25, -0.25, -0.25, -0.25, -0.25), with
+one for each treatment mean, which together define a null hypothesis of
+no difference between two groups of means. This is exactly how we
+specify contrasts in R: as a list of vectors, each vector being a set of
+contrast coefficients:</p>
+<pre class="r"><code># First, fit the model
+greenfeeds_fit = lm(Yield ~ Treatment, data = greenfeeds)
+
+# Calculate the marginal means
+(greenfeeds_emm = emmeans(greenfeeds_fit, specs = ~ Treatment))</code></pre>
+<pre><code>#&gt;  Treatment                emmean    SE df lower.CL upper.CL
+#&gt;  Brigadier Mangels          11.3 0.961 24     9.29     13.3
+#&gt;  Yellow Globe Mangels       13.9 0.961 24    11.97     15.9
+#&gt;  Orange Globe Mangels       11.6 0.961 24     9.67     13.6
+#&gt;  Red Intermediate Mangels   11.1 0.961 24     9.09     13.1
+#&gt;  Mono Rosa Fodder Beet      14.8 0.961 24    12.82     16.8
+#&gt;  Mono Blanc Fodder Beet     13.4 0.961 24    11.42     15.4
+#&gt;  Mono Bomba Fodder Beet     13.9 0.961 24    11.94     15.9
+#&gt;  Yellow Daeno Fodder Beet   17.2 0.961 24    15.27     19.2
+#&gt; 
+#&gt; Confidence level used: 0.95</code></pre>
+<pre class="r"><code># Define our contrasts using a named list
+contr_list = list(&#39;Mangel vs. Fodder Beets&#39; = c(0.25,  0.25,  0.25,  0.25,
+                                               -0.25, -0.25, -0.25, -0.25))
+
+# Perform the test
+contrast(greenfeeds_emm, contr_list)</code></pre>
+<pre><code>#&gt;  contrast                estimate   SE df t.ratio p.value
+#&gt;  Mangel vs. Fodder Beets    -2.86 0.68 24  -4.203  0.0003</code></pre>
+<p>First, note that the ordering of the coefficients in each contrast
+needs to match the ordering of the treatments given by the output of the
+call to <code>emmeans</code>. Second, note that the resulting estimate
+is negative, which indicates the “minus” group (i.e. the set of
+treatment means having negative coefficients) had the larger yields -
+specifically, having yields higher by 2.86 tons/ha, on average.</p>
+<p>Just as the treatments naturally divide into two groups, there are
+natural sub-groupings within the “Mangel” and “Fodder Beet” types. For
+example, another contrast which one might be interested in is:</p>
+<p><strong>Q2: Do the globe-type mangels differ in yield, on average,
+from the brigadier-type mangels?</strong></p>
+<p>In this case, our null hypothesis looks like this:</p>
+<p><span class="math display">\[
+H_2: \frac{\mu_2 + \mu_3}{2} - \frac{\mu_1}{1} = 0
+\]</span> or, equivalently:</p>
+<p><span class="math display">\[
+H_2: \frac{1}{2}\mu_2 + \frac{1}{2}\mu_3 - 1\mu_1 = 0
+\]</span></p>
+<p>This contrast gets encoded in R as follows:</p>
+<pre class="r"><code># Define our contrasts using a named list
+contr_list = list(&#39;Mangels vs. Fodder Beets&#39; = c(0.25,  0.25,  0.25,  0.25,
+                                                -0.25, -0.25, -0.25, -0.25), 
+                  &#39;Globe vs. Brigadier Mangels&#39; = c(-1, 0.5, 0.5, 0,
+                                                     0, 0,   0,   0))
+
+# Perform the test
+contrast(greenfeeds_emm, contr_list)</code></pre>
+<pre><code>#&gt;  contrast                    estimate   SE df t.ratio p.value
+#&gt;  Mangels vs. Fodder Beets       -2.86 0.68 24  -4.203  0.0003
+#&gt;  Globe vs. Brigadier Mangels     1.52 1.18 24   1.296  0.2074</code></pre>
+<p>Note that, if a group consists of only one treatment, that treatment
+gets a coefficient of 1 (or -1), and if a treatment does not belong in
+any of the groups being compared in that contrast, it gets a coefficient
+of zero.</p>
+<p>We are now in a position to define the “rules” for properly
+specifying contrasts in R:</p>
+<p><strong>Rules for All Contrasts:</strong></p>
+<ol style="list-style-type: decimal">
+<li><p>A set of contrasts is specified as a list. It is good practice to
+give an informative name to each individual contrast in the
+list.</p></li>
+<li><p>Each contrast in the list is specified as a vector of weights,
+with one weight for each treatment mean generated from the call to
+<code>emmeans()</code> (if you use a grouping factor in the
+<code>emmeans</code> formula, it will be the number of treatment means
+in each group, not the total number of treatment means).</p></li>
+<li><p>The ordering the weights must correspond with the ordering of the
+treatment means generated by the call to
+<code>emmeans()</code>.</p></li>
+<li><p>The whole contrast must sum to 0.</p></li>
+</ol>
+<p><strong>Rules for Class Comparisons</strong></p>
+<ol start="5" style="list-style-type: decimal">
+<li><p>the groups being compared in any given contrast are defined by
+having weights with a common sign (+/-), while a treatment not belonging
+to either of those groups should be given a weight of zero.</p></li>
+<li><p>All the positive weights must sum to +1 and all the negative
+weights must sum to -1</p></li>
+<li><p>If the resulting estimate is positive, it means the group sharing
+positive weights was larger; if the resulting estimate is negative, the
+group with the negative weights was larger.</p></li>
+</ol>
+</div>
+<div id="orthogonality" class="section level2">
+<h2>Orthogonality</h2>
+<p>Contrasts which are mutually independent of each other are said to be
+<em>orthogonal</em>. You can check to see if two contrasts are
+orthogonal by verifying that their product is equal to zero. For class
+contrasts, it is possible to construct a set of orthogonal contrasts by
+simply dividing all the treatment means into two groups, and then each
+of those groups into two sub-groups, and each sub-group into two
+sub-sub-groups, and so on until no further subdivision is possible (the
+sub-groups do not need to be equal sized). If the number of treatment
+groups is <em>j</em>, this set will always contain <em>j</em>-1
+contrasts. You are not required to make sure your pre-planned contrasts
+are all orthogonal, although you should generally limit yourself to not
+testing more than <em>j</em>-1 of them. <strong>Whether your contrasts
+are orthogonal or not, if they are defined before data analysis, and the
+number is kept modest (i.e. &lt; <em>j</em>), you don’t need to use a
+p-value adjustment, such as e.g. Tukey’s HSD</strong>, which is good,
+because those adjustments cause a loss of statistical power.</p>
+<p>Here is one complete set of orthogonal contrasts for the greenfields
+data:</p>
+<pre class="r"><code>orth_contr_list = list(&#39;Mangel vs Fodder&#39;       = c( 1, 1,  1,  1,  -1,   -1,  -1, -1)/4, 
+                       
+                       &#39;Globe vs Non-Globe&#39;     = c(-1, 1,  1, -1,   0,    0,   0,  0)/2,
+                       &#39;Yellow vs Orange Globe&#39; = c( 0, 1, -1,  0,   0,    0,   0,  0), 
+                       &#39;Brigadier vs Red Int.&#39;  = c( 1, 0,  0, -1,   0,    0,   0,  0), 
+                       
+                       &#39;Mono vs Daeno Fodder&#39;   = c( 0, 0,  0,  0, 1/3,  1/3, 1/3, -1), 
+                       &#39;Non-Bomba vs Bomba&#39;     = c( 0, 0,  0,  0, 1/2,  1/2,  -1,  0), 
+                       &#39;Rosa vs Blanc Fodder&#39;   = c( 0, 0,  0,  0, 1/2, -1/2,   0,  0))
+
+contrast(greenfeeds_emm, orth_contr_list)</code></pre>
+<pre><code>#&gt;  contrast               estimate    SE df t.ratio p.value
+#&gt;  Mangel vs Fodder         -2.856 0.680 24  -4.203  0.0003
+#&gt;  Globe vs Non-Globe        1.625 0.961 24   1.691  0.1038
+#&gt;  Yellow vs Orange Globe    2.300 1.360 24   1.692  0.1036
+#&gt;  Brigadier vs Red Int.     0.200 1.360 24   0.147  0.8842
+#&gt;  Mono vs Daeno Fodder     -3.208 1.110 24  -2.891  0.0080
+#&gt;  Non-Bomba vs Bomba        0.175 1.180 24   0.149  0.8831
+#&gt;  Rosa vs Blanc Fodder      0.700 0.680 24   1.030  0.3133</code></pre>
+<p>Note that when the two groups being compared are each composed of the
+same number of treatment means, as is the case for the “mangel type”
+contrasts, then the weights can be specified with integer values and the
+whole vector divided by the corresponding number of treatments in each
+group. This doesn’t work when the groups are composed of different
+numbers of treatment means, as is the case for some of the “fodder type”
+contrasts. Moreover, it is sometimes not simply convenient but necessary
+to specify the weights as fractions, as when some weights are a
+repeating decimal like <span class="math inline">\(\frac{1}{3}\)</span>.
+Also note that there are 8-1=7 orthogonal contrasts in this set;
+although there are other possible sets of orthogonal contrasts which
+could be specified, they will all contain 7 contrasts.</p>
+</div>
+<div id="interaction-contrasts" class="section level2">
+<h2>Interaction Contrasts</h2>
+<p>These data (also from Saville and Wood, 1991) come from a 2x2
+factorial experiment examining the effect of phosphorus (supplied as
+superphosphate at 250kg/ha) and nitrogen (supplied as nitrolime at
+250kg/ha) fertilization on barley yield. The study was established as a
+completely randomized design.</p>
+<pre class="r"><code># Define treatments (and rep numbers)
+barley = expand.grid(Superphosphate = c(0, 250), 
+                     Nitrolime = c(0, 250), Rep = 1:5) |&gt; 
+  mutate(across(1:3, factor),
+         Yield = c(19.2, 18.2, 20.0, 23.6, 
+                   18.4, 19.8, 21.6, 21.6,
+                   17.0, 19.4, 22.0, 23.2, 
+                   17.6, 19.0, 20.8, 21.4, 
+                   17.2, 19.8, 20.4, 21.2)) |&gt; 
+  dplyr::select(Rep, Nitrolime, Superphosphate, Yield)
+
+head(barley)</code></pre>
+<pre><code>#&gt;   Rep Nitrolime Superphosphate Yield
+#&gt; 1   1         0              0  19.2
+#&gt; 2   1         0            250  18.2
+#&gt; 3   1       250              0  20.0
+#&gt; 4   1       250            250  23.6
+#&gt; 5   2         0              0  18.4
+#&gt; 6   2         0            250  19.8</code></pre>
+<p>The first two questions which naturally emerge from such a study are
+conceptually very straightforward:</p>
+<p><strong>Q1: Does superphosphate, on average, increase
+yield?</strong></p>
+<p>and</p>
+<p><strong>Q2: Does nitrolime, on average, increase yield?</strong></p>
+<p>If we use the following to denote the different treatment means:</p>
+<table>
+<colgroup>
+<col width="33%" />
+<col width="33%" />
+<col width="33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Superphosphate</th>
+<th>Nitrolime</th>
+<th>Symbol</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>No</td>
+<td>No</td>
+<td><span class="math display">\[                                                                                                     
+                                                                                                                        \mu_1         
+                                                                                                                        \]</span></td>
+</tr>
+<tr class="even">
+<td>Yes</td>
+<td>No</td>
+<td><span class="math display">\[                                                                                                     
+                                                                                                                        \mu_2         
+                                                                                                                        \]</span></td>
+</tr>
+<tr class="odd">
+<td>No</td>
+<td>Yes</td>
+<td><span class="math display">\[                                                                                                     
+                                                                                                                        \mu_3         
+                                                                                                                        \]</span></td>
+</tr>
+<tr class="even">
+<td>Yes</td>
+<td>Yes</td>
+<td><span class="math display">\[                                                                                                     
+                                                                                                                        \mu_4         
+                                                                                                                        \]</span></td>
+</tr>
+</tbody>
+</table>
+<p>Then the first of these two questions can be expressed as the
+following null hypotheses:</p>
+<p><span class="math display">\[H_1:(\frac{1}{2}\mu_2 +
+\frac{1}{2}\mu_4) - (\frac{1}{2}\mu_1 + \frac{1}{2}\mu_3) = 0\]</span>
+But since its important that when specifying our weights we maintain the
+correct order for the treatments, we use algebra to rearrange the terms
+as:</p>
+<p><span class="math display">\[H_1: -\frac{1}{2}\mu_1 +
+\frac{1}{2}\mu_2 - \frac{1}{2}\mu_3 + \frac{1}{2}\mu_4 = 0\]</span></p>
+<p>Similarly, the null hypothesis for the second of our two research
+questions is</p>
+<p><span class="math display">\[H_2: -\frac{1}{2}\mu_1 -
+\frac{1}{2}\mu_2 + \frac{1}{2}\mu_3 + \frac{1}{2}\mu_4 = 0\]</span>
+Somewhat more subtle is the concept of an interaction. It can be framed
+in a few, equivalent ways:</p>
+<p><strong>Q3: Is the effect of superphosphate consistent across levels
+of nitrolime?</strong></p>
+<p><strong>Q3: Is the effect of nitrolime consistent across levels of
+superphosphate?</strong></p>
+<p><strong>Q3: Does the combination of superphosphate and nitrolime
+increase or decrease yield beyond what would be expected from the two
+treatments individually?</strong></p>
+<p>In formulating the null hypothesis, I find it useful to this of it
+as: “is there a difference in the differences?”:</p>
+<p><span class="math display">\[H_3: (\mu_4 - \mu_3) - (\mu_2 - \mu_1) =
+0\]</span></p>
+<p>The first part of the equation, <span class="math inline">\(\mu_4 -
+\mu_3\)</span>, is the effect of adding superphosphate in the presence
+of nitrolime, and the second part of the equation, <span class="math inline">\(\mu_2 - \mu_1\)</span>, is the effect of adding
+superphosphate in the absence of nitrolime. If the whole expression,
+i.e. the “difference in the differences”, is <em>not</em> zero, it means
+that the effect of superphosphate is <em>not</em> consistent across
+levels of nitrolime: there is an interaction. In such a circumstance,
+the estimates for the main effects (Q1 and Q2) are no longer meaningful,
+since there isn’t one effect of, for example, superphosphate but instead
+one effect when nitrolime is present and another effect when nitrolime
+is absent.</p>
+<p>Distributing the minus in the second part of the hypothesis, we
+get:</p>
+<p><span class="math display">\[H_3: \mu_4 - \mu_3 - \mu_2 + \mu_1 =
+0\]</span></p>
+<p>Which, rearranging to correctly order our treatments, gives:</p>
+<p><span class="math display">\[H_3: \mu_1 - \mu_2 - \mu_3 + \mu_4 =
+0\]</span> In R, these three contrasts would be performed as
+follows:</p>
+<pre class="r"><code># fit the model
+barley_fit = lm(Yield ~ Superphosphate*Nitrolime, data = barley)
+
+(barley_emm = emmeans(barley_fit, ~ Superphosphate:Nitrolime))</code></pre>
+<pre><code>#&gt;  Superphosphate Nitrolime emmean  SE df lower.CL upper.CL
+#&gt;  0              0           17.9 0.4 16     17.0     18.7
+#&gt;  250            0           19.2 0.4 16     18.4     20.1
+#&gt;  0              250         21.0 0.4 16     20.1     21.8
+#&gt;  250            250         22.2 0.4 16     21.4     23.0
+#&gt; 
+#&gt; Confidence level used: 0.95</code></pre>
+<pre class="r"><code>fac_contr = list(&#39;Main Effects Superphosphate&#39; = c(-0.5,  0.5, -0.5, 0.5), 
+                 &#39;Main Effects Nitrolime&#39;      = c(-0.5, -0.5,  0.5, 0.5), 
+                 &#39;P x N Interaction&#39;           = c(   1,   -1,   -1,   1))
+contrast(barley_emm, fac_contr)</code></pre>
+<pre><code>#&gt;  contrast                    estimate    SE df t.ratio p.value
+#&gt;  Main Effects Superphosphate     1.30 0.400 16   3.246  0.0051
+#&gt;  Main Effects Nitrolime          3.02 0.400 16   7.541 &lt;0.0001
+#&gt;  P x N Interaction              -0.12 0.801 16  -0.150  0.8828</code></pre>
+<p>Note that the signs of the interaction coefficient match the product
+of the two main effects contrasts. In fact, rather than going through
+the algebra, we can use this to construct interaction contrasts by
+simply multiplying two other contrasts together.</p>
+<p>Also note that, since this is a 2x2 factorial, there is only one
+contrast for each main effect and the interaction, but this will not be
+the case for experiments where some factor(s) has more than two levels.
+In these cases, it is often useful to combine class comparisons among
+the levels of one factor with interaction contrasts among them. It is in
+cases like this, and in the the case of specifying higher-order
+interaction contrasts, that it is especially helpful to be able to
+simply multiply together two previously specified contrasts and scale
+the results.</p>
+<p><strong>Rules for Interaction Contrasts</strong></p>
+<ol start="8" style="list-style-type: decimal">
+<li><p>Interaction contrasts can be specified by either assigning
+weights which represent the “difference in the differences” among
+treatments, or by multiplying together two sets of contrast coefficients
+and scaling the results so that the weights are all +1, -1 or
+0.</p></li>
+<li><p>In the presence of a significant interaction, the main effects
+estimates can no longer be interpreted as <em>the</em> effect of a
+treatment, and it becomes necessary to consider the simple effects
+(i.e. the effect of the treatment at specific levels of the other
+treatment) instead</p></li>
+</ol>
+</div>
+</div>
+<div id="polynomial-contrasts" class="section level1">
+<h1>Polynomial Contrasts</h1>
+<p>Forthcoming</p>
+</div>
+<div id="references" class="section level1">
+<h1>References</h1>
+<p>Saville, D. J., &amp; Wood, G. R. (1991). <em>Statistical Methods:
+The Geometric Approach</em>. Springer Science &amp; Business Media.</p>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

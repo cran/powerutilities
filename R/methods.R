@@ -1,0 +1,120 @@
+#' @title Print the results of a power analysis
+#'
+#' @description This function controls the formatting when printing `powertable`
+#' objects.
+#'
+#' @param x A `powertable` object
+#' @param digits Integer. The number of digits to print for all columns other 
+#' than the p-value and power. 
+#' @param pdigits Integer. The number of digits to print for the p-value and 
+#' power columns
+#' @param ... Unused
+#' @return The input `x` (a `powertable` object), returned invisibly. Called
+#'   for its side effect of printing the table with p-values, power and
+#'   estimates rounded for display, followed by the degrees-of-freedom method
+#'   and significance level used.
+#' @importFrom stats qt
+#' @importFrom dplyr mutate across any_of where
+#' @importFrom rlang .data
+#' @export
+print.powertable = function(x, digits = 1, pdigits = getOption('pdigits', default = 4), ...){
+  
+  fmt_pval = function(p, pdigits) {
+    ifelse(p < 10^(-pdigits),
+           paste0('<.', paste(rep('0', pdigits - 1), collapse = ''), '1'),
+           sprintf(paste0('%.', pdigits, 'f'), p))
+  }
+  
+  fmt_est_ci = function(x, ci_width){
+    v = max(0, -log10(ci_width))
+    d = ceiling(v)+1
+    sprintf(paste0('%.', d, 'f'), x)
+  }
+  
+  fmt_df = function(x){
+    if (all(is.infinite(x))){
+      x
+    } else {
+      int = all(abs(x - round(x) < 1e-3))
+      if(int) {
+        sprintf('%.0f', x)
+      } else {
+        sprintf('%.1f', x)
+      } 
+    }
+  }
+ 
+  out = x |>
+    mutate(across(any_of(c('Pval', 'Power', 'TypeS')), 
+                                ~fmt_pval(., pdigits = pdigits)),
+                  across(any_of(c('Estimate', 'SE', 'LCL', 'UCL')),
+                         ~ fmt_est_ci(., ci_width = qt(1-attr(x, 'alpha')/2, df = .data$DenDF)*SE*2)),
+                  across(any_of(c('NumDF', 'DenDF')), fmt_df),
+                  across(where(is.numeric), ~sprintf(paste0('%.', digits, 'f'), .)))
+  
+  print.data.frame(out)
+  
+  cat(paste0('\nDegrees-of-freedom method: ', attr(x, 'ddf'), '\n\u03B1 = ', attr(x, 'alpha'), '\n'))
+  
+  invisible(x)
+}
+
+#' @title Printing powertables with knitr
+#' @description
+#' Provides a method for outputting powertables as html
+#' @param x A `powertable` object to be printed
+#' @param ... Unused.
+#' @return Invisibly returns `x`
+#' @exportS3Method knitr::knit_print
+#' @importFrom utils capture.output
+knit_print.powertable = function(x, ...) {
+  out <- paste(capture.output(print.powertable(x, ...)), collapse = "\n")
+  if (knitr::is_html_output()) {
+    knitr::asis_output(paste0("<pre>", out, "</pre>"))
+  } else {
+    knitr::asis_output(paste0("\n```\n", out, "\n```\n"))
+  }
+  invisible(x)
+}
+
+#' @title Printing retermslist objects
+#' @description
+#' Provides a method formatting and displaying retermslist objects
+#' @param x An `retermslist` object, as returned by [theta_finder()].
+#' @param ... Unused.
+#' @return The input `x` (a `retermslist` object), returned invisibly. Called
+#'   for its side effect of printing one table per random-effects term, listing
+#'   the grouping factor, the name of each random effect, and the position at
+#'   which each standard deviation and correlation must be supplied in
+#'   `re_terms` when calling [set_glmm()].
+#' @export
+print.retermslist = function(x, ...) {
+  pad_columns <- function(mat_list, cols) {
+    widths <- sapply(cols, function(col) {
+      max(sapply(mat_list, function(m) max(nchar(m[, col]), na.rm = TRUE)))
+    })
+    names(widths) <- cols
+    
+    lapply(mat_list, function(m) {
+      for (col in cols) {
+        w <- widths[[col]]
+        x <- m[, col]
+        is_na <- is.na(x)
+        x[!is_na] <- formatC(x[!is_na], width = -w)
+        x[is_na] <- strrep(" ", w)
+        m[, col] <- x
+      }
+      m
+    })
+  }
+  
+  comb_terms = lapply(x, \(x) cbind(x$Group, x$`Std.Dev.`, x$`Cor.`)) |> 
+    pad_columns(cols = c('Group', 'Name'))
+  
+  for (n in 1:length(comb_terms)){
+    colnames(comb_terms[[n]])[4] = paste0('Cor. (', attr(x[[n]], 'covstruct'), ')')
+    prmatrix(comb_terms[[n]], quote = F, na.print = '', rowlab = rep('', nrow(comb_terms[[n]])))
+    cat('\n')
+  }
+  invisible(x)
+}
